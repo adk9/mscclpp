@@ -6,6 +6,7 @@ pr: none
 
 jobs:
 - job: MultiNodesTest
+  timeoutInMinutes: 90
   displayName: Multi nodes test
   strategy:
     matrix:
