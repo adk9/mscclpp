@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+#include <mpi.h>
+
 #include <algorithm>
 #include <mscclpp/concurrency_device.hpp>
 #include <mscclpp/core.hpp>
@@ -46,6 +48,38 @@ struct hash<channelKey> {
   }
 };
 }  // namespace std
+
+class MPIBootstrap : public mscclpp::Bootstrap {
+ public:
+  MPIBootstrap() : Bootstrap() {}
+  int getRank() override {
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    return rank;
+  }
+  int getNranks() override {
+    int worldSize;
+    MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
+    return worldSize;
+  }
+  int getNranksPerNode() override {
+    MPI_Comm shmcomm;
+    MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &shmcomm);
+    int shmrank;
+    MPI_Comm_size(shmcomm, &shmrank);
+    return shmrank;
+  }
+  void allGather(void* sendbuf, int size) override {
+    MPI_Allgather(MPI_IN_PLACE, 0, MPI_BYTE, sendbuf, size, MPI_BYTE, MPI_COMM_WORLD);
+  }
+  void barrier() override { MPI_Barrier(MPI_COMM_WORLD); }
+  void send(void* sendbuf, int size, int dest, int tag) override {
+    MPI_Send(sendbuf, size, MPI_BYTE, dest, tag, MPI_COMM_WORLD);
+  }
+  void recv(void* recvbuf, int size, int source, int tag) override {
+    MPI_Recv(recvbuf, size, MPI_BYTE, source, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+};
 
 struct ChannelInfo {
   std::vector<mscclpp::SmChannel> smChannels;
@@ -288,7 +322,7 @@ NCCL_API ncclResult_t ncclGetVersion(int* version) {
 NCCL_API ncclResult_t ncclGetUniqueId(ncclUniqueId* uniqueId) {
   if (uniqueId == nullptr) return ncclInvalidArgument;
   if (MSCCLPP_UNIQUE_ID_BYTES != NCCL_UNIQUE_ID_BYTES) return ncclInternalError;
-  mscclpp::UniqueId id = mscclpp::TcpBootstrap::createUniqueId();
+  mscclpp::UniqueId id;
   memcpy(uniqueId, &id, sizeof(ncclUniqueId));
   return ncclSuccess;
 }
@@ -302,10 +336,7 @@ NCCL_API ncclResult_t ncclCommInitRankConfig(ncclComm_t* comm, int nranks, ncclU
 NCCL_API ncclResult_t ncclCommInitRank(ncclComm_t* comm, int nranks, ncclUniqueId commId, int rank) {
   if (comm == nullptr) return ncclInvalidArgument;
   if (nranks < 0 || rank < 0 || rank >= nranks) return ncclInvalidArgument;
-  std::shared_ptr<mscclpp::TcpBootstrap> bootstrap = std::make_shared<mscclpp::TcpBootstrap>(rank, nranks);
-  mscclpp::UniqueId id;
-  memcpy(id.data(), &commId, sizeof(ncclUniqueId));
-  bootstrap->initialize(id);
+  std::shared_ptr<MPIBootstrap> bootstrap = std::make_shared<MPIBootstrap>();
   std::shared_ptr<mscclpp::Communicator> mscclppComm = std::make_shared<mscclpp::Communicator>(bootstrap);
   std::vector<mscclpp::NonblockingFuture<std::shared_ptr<mscclpp::Connection>>> connectionFutures;
 

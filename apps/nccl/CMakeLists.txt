@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+find_package(MPI REQUIRED)
+
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*)
 file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS include/nccl.h)
 
@@ -12,7 +14,7 @@ add_library(mscclpp_nccl_obj OBJECT)
 target_sources(mscclpp_nccl_obj PRIVATE ${SOURCES})
 target_sources(mscclpp_nccl_obj PUBLIC FILE_SET HEADERS FILES ${HEADERS})
 target_include_directories(mscclpp_nccl_obj PRIVATE include ${PROJECT_SOURCE_DIR}/src/include SYSTEM PRIVATE ${GPU_INCLUDE_DIRS})
-target_link_libraries(mscclpp_nccl_obj PRIVATE ${GPU_LIBRARIES} PUBLIC mscclpp_obj)
+target_link_libraries(mscclpp_nccl_obj PRIVATE ${GPU_LIBRARIES} PUBLIC mscclpp_obj MPI::MPI_CXX)
 set_target_properties(mscclpp_nccl_obj PROPERTIES LINKER_LANGUAGE CXX POSITION_INDEPENDENT_CODE 1 VERSION ${MSCCLPP_VERSION} SOVERSION ${MSCCLPP_SOVERSION})
 if(USE_CUDA)
     target_compile_definitions(mscclpp_nccl_obj PRIVATE USE_CUDA)
